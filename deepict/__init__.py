@@ -71,21 +71,27 @@ class Plugin(pwem.Plugin):
         installationCmd = cls.getCondaActivationCmd()
 
         # Create the environment
+        installationCmd += ' git clone https://github.com/ZauggGroup/DeePiCt.git && '
+
         installationCmd += 'conda create -y -n %s -c conda-forge -c anaconda python=3.8 && ' % DEEPICT_ENV_NAME
 
-        installationCmd += 'conda install -n %s -c conda-forge mamba && ' % DEEPICT_ENV_NAME
+        #installationCmd += 'conda install -n %s -c conda-forge mamba && ' % DEEPICT_ENV_NAME
 
         # Activate new the environment
         installationCmd += 'conda activate %s && ' % DEEPICT_ENV_NAME
 
-        # Install non-conda required packages
-        installationCmd += 'mamba create -c conda-forge -c bioconda -n snakemake snakemake==5.13.0 && '
-        installationCmd += 'conda activate snakemake && '
-        installationCmd += 'conda install pandas && '
-        installationCmd += 'conda install -c pytorch pytorch torchvision && '
-        installationCmd += 'conda install -c anaconda keras-gpu=2.3.1 && '
-        installationCmd += 'git clone https://github.com/ZauggGroup/DeePiCt.git'
+        #installationCmd += 'pip install mrcfile && '
+        #installationCmd += 'pip install tensorboardX && '
 
+        # Install non-conda required packages
+        #installationCmd += 'mamba create -c conda-forge -c bioconda -n snakemake snakemake==5.13.0 && '
+        #installationCmd += 'conda activate snakemake && '
+        #installationCmd += 'conda install -y pandas && '
+        #installationCmd += 'conda install -c -y pytorch pytorch torchvision && '
+        #installationCmd += 'conda install -c -y anaconda keras-gpu=2.3.1'
+        
+        installationCmd += 'touch %s' % DEEPICT_INSTALLED
+        
         deeepict_commands = [(installationCmd, DEEPICT_INSTALLED)]
 
         envPath = os.environ.get('PATH', "")  # keep path since conda likely in there

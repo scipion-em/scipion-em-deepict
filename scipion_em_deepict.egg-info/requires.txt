@@ -1,2 +1,4 @@
 scipion-pyworkflow
 scipion-em
+mrcfile
+tensorboardX

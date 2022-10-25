@@ -32,11 +32,13 @@ This module will provide the traditional Hello world example
 """
 from email.policy import default
 
-from sqlalchemy import true
+#from sqlalchemy import true
 from pyworkflow.protocol import Protocol, params, Integer
 from pyworkflow.utils import Message
 from pyworkflow.protocol import EnumParam, IntParam, FloatParam, BooleanParam, LT, GT
 from scipion.constants import PYTHON
+import csv
+#import yaml
 
 from deepict import Plugin
 
@@ -70,6 +72,10 @@ class DeepictSegmentation(Protocol):
 
     AMP_SPECTRUM_FN     = 'amp_spectrum.tsv'
     FILTERED_TOMO_FN    ='filtered_tomo.mrc'
+
+    #EXTRA_PATH = self._getExtraPath() -> parametro dentro concatena a la ruta
+    #TODO Icono
+    DEEPICT_TEMPORAL_PATH = '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/src'
 
     # -------------------------- DEFINE param functions ----------------------
     def _defineParams(self, form):
@@ -111,8 +117,7 @@ class DeepictSegmentation(Protocol):
                       label='Threshold',
                       default=0.5,
                       validators=[GT(0), LT(1)],
-                      help='TODO Choose the model based on what you want to segment. \n '
-                           'The available models are prediction for membrane, ribosome, microtubules, and FAS.')
+                      help='TODO')
 
         form.addParam('minClusterSize',
                       IntParam,
@@ -135,7 +140,6 @@ class DeepictSegmentation(Protocol):
         form.addParam('calculateMotl',
                       BooleanParam,
                       label='Calculate motl',
-                      default=true,
                       help='TODO')
 
         form.addParam('contactMode',
@@ -179,26 +183,69 @@ class DeepictSegmentation(Protocol):
         # Create the 64^3 patches
         # TODO 
         # preguntar params
-        Plugin.runDeepict(self, PYTHON, '$(which generate_prediction_partition.py) ----config_file %s --pythonpath %s --tomo_name %s'
+        Plugin.runDeepict(self, PYTHON, '$(which generate_prediction_partition.py) --config_file %s --pythonpath %s --tomo_name %s'
                         % (self.inputTomogram.get().getFileName(),
-                           self._getExtraPath(self.AMP_SPECTRUM_FN), self._getExtraPath(self.FILTERED_TOMO_FN)))
+                           self.DEEPICT_TEMPORAL_PATH, self.inputTomogram.get().getFileName()))
 
     def segmentStep(self):
         # Create the segmentation of the 64^3 patches
         # TODO 
         # preguntar params
-        Plugin.runDeepict(self, PYTHON, '$(which segment.py) ----config_file %s --pythonpath %s --tomo_name %s --gpu 0'
+        Plugin.runDeepict(self, PYTHON, '$(which segment.py) --config_file %s --pythonpath %s --tomo_name %s --gpu 0'
                         % (self.inputTomogram.get().getFileName(),
-                           self._getExtraPath(self.AMP_SPECTRUM_FN), self._getExtraPath(self.FILTERED_TOMO_FN)))
+                           self.DEEPICT_TEMPORAL_PATH, self._getExtraPath(self.FILTERED_TOMO_FN)))
         
-        def assemblePredictionStep(self):
+    def assemblePredictionStep(self):
         # Assemnble the segmentated patches
         # TODO 
         # preguntar params
-            Plugin.runDeepict(self, PYTHON, '$(which segment.py) ----config_file %s --pythonpath %s --tomo_name %s'
+            Plugin.runDeepict(self, PYTHON, '$(which segment.py) --config_file %s --pythonpath %s --tomo_name %s'
                         % (self.inputTomogram.get().getFileName(),
-                           self._getExtraPath(self.AMP_SPECTRUM_FN), self._getExtraPath(self.FILTERED_TOMO_FN)))
+                           self.DEEPICT_TEMPORAL_PATH, self._getExtraPath(self.FILTERED_TOMO_FN)))
+    '''
+        def generateConfigFile():
+            header = ['tomo_name','raw_tomo','filtered_tomo', 'no_mask']
 
+    # Define the elements of this list:
+        data = [tomo_name, '', tomogram_path, mask_path]
+
+        with open(user_data_file, 'w', encoding='UTF8') as f:
+            writer = csv.writer(f)
+
+            # write the header
+            writer.writerow(header)
+
+            # write the data
+            writer.writerow(data)
+        
+        data_dictionary = dict(zip(header, data))
+
+        def read_yaml(file_path):
+            with open(file_path, "r") as stream:
+                data = yaml.safe_load(stream)
+            return data
+
+        def save_yaml(data, file_path):
+            with open(file_path, 'w') as yaml_file:
+                yaml.dump(data, yaml_file, default_flow_style=False)
+
+            d = read_yaml(original_config_file)
+            d['dataset_table'] = user_data_file
+            d['output_dir'] = user_prediction_folder
+            d['work_dir'] = user_work_folder
+            d['model_path'] = f'{model_path}'
+            d['tomos_sets']['training_list'] = []
+            d['tomos_sets']['prediction_list'] = [f'{tomo_name}']
+            d['cross_validation']['active'] = False
+            d['training']['active'] = False
+            d['prediction']['active'] = True
+            d['evaluation']['particle_picking']['active'] = False
+            d['evaluation']['segmentation_evaluation']['active'] = False
+            d['training']['processing_tomo'] = 'filtered_tomo'
+            d['prediction']['processing_tomo'] = 'filtered_tomo'
+            d['postprocessing_clustering']['region_mask'] = 'no_mask'
+            save_yaml(d, user_config_file)
+    '''
     # --------------------------- INFO functions -----------------------------------
     def _summary(self):
         """ Summarize what the protocol has done"""
