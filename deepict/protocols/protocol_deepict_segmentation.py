@@ -71,7 +71,7 @@ class DeepictSegmentation(Protocol):
     COLOCALIZATION  = 2
 
     AMP_SPECTRUM_FN     = 'amp_spectrum.tsv'
-    FILTERED_TOMO_FN    ='filtered_tomo.mrc'
+    FILTERED_TOMO_FN    = 'filtered_tomo.mrc'
 
     #EXTRA_PATH = self._getExtraPath() -> parametro dentro concatena a la ruta
     #TODO Icono
@@ -87,19 +87,17 @@ class DeepictSegmentation(Protocol):
         form.addSection(label=Message.LABEL_INPUT)
         form.addParam('inputTomogram', params.PointerParam,
                       pointerClass='SetOfTomograms',
-                      label='Even tomograms',
+                      label='Input tomograms',
                       important=True,
                       allowsNull=False,
-                      help='Set of tomogram reconstructed from the even frames of the tilt'
-                           'series movies.')
+                      help='Set of reconstructed tomograms.')
         
         form.addParam('mask', params.PointerParam,
                       pointerClass='SetOfTomograms',
                       label='Mask',
-                      important=True,
+                      important=False,
                       allowsNull=False,
-                      help='Set of tomogram reconstructed from the even frames of the tilt'
-                           'series movies.')
+                      help='Mask.')
 
         form.addParam('tomogramOption',
                       EnumParam,
@@ -161,22 +159,30 @@ class DeepictSegmentation(Protocol):
     # --------------------------- STEPS functions ------------------------------
     def _insertAllSteps(self):
         # Insert processing steps
-        self._insertFunctionStep('extractSpectrumStep')
-        self._insertFunctionStep('matchSpectrumStep')
+        #self._insertFunctionStep('extractSpectrumStep')
 
-    def extractSpectrumStep(self):
+        for tom, mask in zip(self.inputTomogram.get(), self.mask.get()):
+            if tom.getObjId() == mask.getObjId():
+                tomId = tom.getObjId()
+                self._insertFunctionStep('extractSpectrumStep', self.inputTomogram.get(), tomId)
+                self._insertFunctionStep('matchSpectrumStep', self.inputTomogram.get(), tomId)
+
+    def extractSpectrumStep(self, inputTom, tomId):
         # python extract_spectrum.py --input <input_tomo.mrc> --output <amp_spectrum.tsv>
-
-        Plugin.runDeepict(self, PYTHON, '$(which extract_spectrum.py) --input %s --output %s'
-                        % (self.inputTomogram.get().getFileName(),
+        print("log --> extractSpectrumStep")
+        Plugin.runDeepict(self, PYTHON, '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/spectrum_filter/extract_spectrum.py --input %s --output %s'
+                        % (inputTom[tomId].getFileName(),
                            self._getExtraPath(self.AMP_SPECTRUM_FN)))
+        print("log <-- extractSpectrumStep")
 
-    def matchSpectrumStep(self):
+    def matchSpectrumStep(self, inputTom, tomId):
         # say what the parameter says!!
-
-        Plugin.runDeepict(self, PYTHON, '$(which match_spectrum.py) --input %s --target %s --output %s'
-                        % (self.inputTomogram.get().getFileName(),
-                           self._getExtraPath(self.AMP_SPECTRUM_FN), self._getExtraPath(self.FILTERED_TOMO_FN)))
+        print("log --> matchSpectrumStep")
+        Plugin.runDeepict(self, PYTHON, '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/spectrum_filter/match_spectrum.py --input %s --target %s --output %s'
+                        % (inputTom[tomId].getFileName(),
+                           self._getExtraPath(self.AMP_SPECTRUM_FN),
+                           self._getExtraPath(self.FILTERED_TOMO_FN)))
+        print("log <-- matchSpectrumStep")
 
     #TODO crear nuevos steps (punto 3 del notebook)
     def splitIntoPatchesStep(self):
@@ -203,8 +209,8 @@ class DeepictSegmentation(Protocol):
                         % (self.inputTomogram.get().getFileName(),
                            self.DEEPICT_TEMPORAL_PATH, self._getExtraPath(self.FILTERED_TOMO_FN)))
     '''
-        def generateConfigFile():
-            header = ['tomo_name','raw_tomo','filtered_tomo', 'no_mask']
+    def generateConfigFile():
+        header = ['tomo_name','raw_tomo','filtered_tomo', 'no_mask']
 
     # Define the elements of this list:
         data = [tomo_name, '', tomogram_path, mask_path]

@@ -46,21 +46,21 @@ class Plugin(pwem.Plugin):
         cls._defineVar(DEEPICT, DEFAULT_ACTIVATION_CMD)
 
     @classmethod
-    def getCryocareEnvActivation(cls):
+    def getDeepictEnvActivation(cls):
         return cls.getVar(DEEPICT_ENV_ACTIVATION)
 
     @classmethod
     def getEnviron(cls, gpuId='0'):
-        """ Setup the environment variables needed to launch cryocare. """
+        """ Setup the environment variables needed to launch Deepict. """
         environ = Environ(os.environ)
         if 'PYTHONPATH' in environ:
             # this is required for python virtual env to work
             del environ['PYTHONPATH']
 
-        environ.update({'CUDA_VISIBLE_DEVICES': gpuId})
+        #environ.update({'CUDA_VISIBLE_DEVICES': gpuId})
 
-        cudaLib = environ.get(DEEPICT_CUDA_LIB, pwem.Config.CUDA_LIB)
-        environ.addLibrary(cudaLib)
+        #cudaLib = environ.get(DEEPICT_CUDA_LIB, pwem.Config.CUDA_LIB)
+        #environ.addLibrary(cudaLib)
         return environ
 
     @classmethod
@@ -74,19 +74,21 @@ class Plugin(pwem.Plugin):
         installationCmd += ' git clone https://github.com/ZauggGroup/DeePiCt.git && '
 
         installationCmd += 'conda create -y -n %s -c conda-forge -c anaconda python=3.8 && ' % DEEPICT_ENV_NAME
-
+        installationCmd += 'conda install -y pandas && '
+        installationCmd += 'pip install mrcfile && '
+        installationCmd += 'pip install scipy && '
         #installationCmd += 'conda install -n %s -c conda-forge mamba && ' % DEEPICT_ENV_NAME
 
         # Activate new the environment
         installationCmd += 'conda activate %s && ' % DEEPICT_ENV_NAME
 
-        #installationCmd += 'pip install mrcfile && '
+        
         #installationCmd += 'pip install tensorboardX && '
 
         # Install non-conda required packages
         #installationCmd += 'mamba create -c conda-forge -c bioconda -n snakemake snakemake==5.13.0 && '
         #installationCmd += 'conda activate snakemake && '
-        #installationCmd += 'conda install -y pandas && '
+        
         #installationCmd += 'conda install -c -y pytorch pytorch torchvision && '
         #installationCmd += 'conda install -c -y anaconda keras-gpu=2.3.1'
         
@@ -117,9 +119,9 @@ class Plugin(pwem.Plugin):
 
     @classmethod
     def runDeepict(cls, protocol, program, args, cwd=None, gpuId='0'):
-        """ Run cryoCARE command from a given protocol. 
-        fullProgram = '%s %s && %s' % (cls.getCondaActivationCmd(),
-                                       cls.getCryocareEnvActivation(),
+        """ Run DeePict command from a given protocol. """
+        print("init --> runDeepict") 
+        print(cls.getCondaActivationCmd())
+        fullProgram = '%s %s' % (cls.getCondaActivationCmd(),
                                        program)
-        protocol.runJob(fullProgram, args, env=cls.getEnviron(gpuId=gpuId), cwd=cwd, numberOfMpi=1)"""
-        pass
+        protocol.runJob(fullProgram, args, env=cls.getEnviron(gpuId=gpuId), cwd=cwd, numberOfMpi=1)
