@@ -38,8 +38,7 @@ from pyworkflow.utils import Message
 from pyworkflow.protocol import EnumParam, IntParam, FloatParam, BooleanParam, LT, GT
 from scipion.constants import PYTHON
 import csv
-#import yaml
-
+import os
 from deepict import Plugin
 
 
@@ -92,7 +91,7 @@ class DeepictSegmentation(Protocol):
                       allowsNull=False,
                       help='Set of reconstructed tomograms.')
         
-        form.addParam('mask', params.PointerParam,
+        form.addParam('inputMask', params.PointerParam,
                       pointerClass='SetOfTomograms',
                       label='Mask',
                       important=False,
@@ -161,45 +160,130 @@ class DeepictSegmentation(Protocol):
         # Insert processing steps
         #self._insertFunctionStep('extractSpectrumStep')
 
-        for tom, mask in zip(self.inputTomogram.get(), self.mask.get()):
-            if tom.getObjId() == mask.getObjId():
+        for tom, inputMask in zip(self.inputTomogram.get(), self.inputMask.get()):
+            if tom.getObjId() == inputMask.getObjId():
                 tomId = tom.getObjId()
+                self._insertFunctionStep('setupFolderStep', self.inputTomogram.get(), tomId)
                 self._insertFunctionStep('extractSpectrumStep', self.inputTomogram.get(), tomId)
                 self._insertFunctionStep('matchSpectrumStep', self.inputTomogram.get(), tomId)
+                self._insertFunctionStep('createConfigFiles', self.inputTomogram.get(), tomId, self.inputMask.get())
+                self._insertFunctionStep('splitIntoPatchesStep', self.inputTomogram.get(), tomId)
+                self._insertFunctionStep('segmentStep', self.inputTomogram.get(), tomId)
+
+    def setupFolderStep(self, inputTom, tomId):
+        ts = inputTom[tomId]
+        tsId = ts.getTsId()
+
+        #Defining the tomogram folder
+        tomoPath = self._getExtraPath(tsId)
+        os.mkdir(tomoPath)
 
     def extractSpectrumStep(self, inputTom, tomId):
         # python extract_spectrum.py --input <input_tomo.mrc> --output <amp_spectrum.tsv>
-        print("log --> extractSpectrumStep")
         Plugin.runDeepict(self, PYTHON, '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/spectrum_filter/extract_spectrum.py --input %s --output %s'
                         % (inputTom[tomId].getFileName(),
-                           self._getExtraPath(self.AMP_SPECTRUM_FN)))
-        print("log <-- extractSpectrumStep")
+                           os.path.join(self.getFolder(inputTom, tomId), self.AMP_SPECTRUM_FN)))
 
     def matchSpectrumStep(self, inputTom, tomId):
         # say what the parameter says!!
-        print("log --> matchSpectrumStep")
         Plugin.runDeepict(self, PYTHON, '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/spectrum_filter/match_spectrum.py --input %s --target %s --output %s'
                         % (inputTom[tomId].getFileName(),
-                           self._getExtraPath(self.AMP_SPECTRUM_FN),
-                           self._getExtraPath(self.FILTERED_TOMO_FN)))
-        print("log <-- matchSpectrumStep")
+                           os.path.join(self.getFolder(inputTom, tomId), self.AMP_SPECTRUM_FN),
+                           os.path.join(self.getFolder(inputTom, tomId), self.FILTERED_TOMO_FN)))
 
+
+    def createConfigFiles(self, inputTom, tomId, inputMask):
+        from posixpath import split
+
+        scriptdir = '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/scripts'
+        srcdir = '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/src/'
+        original_config_file = '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/config.yaml'
+        model_path = '/home/kdna/opt/scipion/software/em/DeePiCt-0/model_weights.pth'
+
+        tomo_name = inputTom[tomId].getFileName() #@param {type:"string"}
+
+        #TODO revisar nombre
+        tomogram_path = os.path.basename(self._getExtraPath(self.FILTERED_TOMO_FN))
+
+        mask_path = inputMask[tomId].getFileName()
+        os.path.join(self.getFolder(inputTom, tomId), self.AMP_SPECTRUM_FN)
+        user_config_file = os.path.join(self.getFolder(inputTom, tomId), 'config.yaml')  #@param {type:"string"}
+        user_data_file = os.path.join(self.getFolder(inputTom, tomId), 'data.csv') #@param {type:"string"}
+        user_prediction_folder = self.getFolder(inputTom, tomId)  #@param {type:"string"}
+        user_work_folder = self.getFolder(inputTom, tomId)  #@param {type:"string"}
+
+        os.makedirs(os.path.split(user_config_file)[0], exist_ok=True)
+        os.makedirs(os.path.split(user_data_file)[0], exist_ok=True)
+        os.makedirs(os.path.split(user_prediction_folder)[0], exist_ok=True)
+        os.makedirs(os.path.split(user_work_folder)[0], exist_ok=True)
+
+        import yaml
+
+        header = ['tomo_name','raw_tomo','filtered_tomo', 'no_mask']
+
+        # Define the elements of this list:
+        data = [tomo_name, '', tomogram_path, mask_path]
+
+        with open(user_data_file, 'w', encoding='UTF8') as f:
+            writer = csv.writer(f)
+
+            # write the header
+            writer.writerow(header)
+
+            # write the data
+            writer.writerow(data)
+        
+        data_dictionary = dict(zip(header, data))
+
+        def read_yaml(file_path):
+            with open(file_path, "r") as stream:
+                data = yaml.safe_load(stream)
+            return data
+
+        def save_yaml(data, file_path):
+            with open(file_path, 'w') as yaml_file:
+                yaml.dump(data, yaml_file, default_flow_style=False)
+
+        d = read_yaml(original_config_file)
+        d['dataset_table'] = user_data_file
+        d['output_dir'] = user_prediction_folder
+        d['work_dir'] = user_work_folder
+        d['model_path'] = f'{model_path}'
+        d['tomos_sets']['training_list'] = []
+        d['tomos_sets']['prediction_list'] = [f'{tomo_name}']
+        d['cross_validation']['active'] = False
+        d['training']['active'] = False
+        d['prediction']['active'] = True
+        d['evaluation']['particle_picking']['active'] = False
+        d['evaluation']['segmentation_evaluation']['active'] = False
+        d['training']['processing_tomo'] = 'filtered_tomo'
+        d['prediction']['processing_tomo'] = 'filtered_tomo'
+        d['postprocessing_clustering']['region_mask'] = 'no_mask'
+        save_yaml(d, user_config_file)
+
+        
     #TODO crear nuevos steps (punto 3 del notebook)
-    def splitIntoPatchesStep(self):
+    def splitIntoPatchesStep(self, inputTom, tomId):
         # Create the 64^3 patches
         # TODO 
         # preguntar params
-        Plugin.runDeepict(self, PYTHON, '$(which generate_prediction_partition.py) --config_file %s --pythonpath %s --tomo_name %s'
-                        % (self.inputTomogram.get().getFileName(),
-                           self.DEEPICT_TEMPORAL_PATH, self.inputTomogram.get().getFileName()))
+        print("Full route")
+        print(os.path.join(self.getFolder(inputTom, tomId), os.path.basename(inputTom[tomId].getFileName())))
+        print("Basename")
+        print(os.path.basename(inputTom[tomId].getFileName()))
+        Plugin.runDeepict(self, PYTHON, '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/scripts/generate_prediction_partition.py --config_file %s --pythonpath %s --tomo_name %s'
+                        % (os.path.join(self.getFolder(inputTom, tomId), 'config.yaml'),
+                           '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/src',
+                           os.path.splitext(os.path.basename(inputTom[tomId].getFileName()))[0]))
 
-    def segmentStep(self):
+    def segmentStep(self, inputTom, tomId):
         # Create the segmentation of the 64^3 patches
         # TODO 
         # preguntar params
-        Plugin.runDeepict(self, PYTHON, '$(which segment.py) --config_file %s --pythonpath %s --tomo_name %s --gpu 0'
-                        % (self.inputTomogram.get().getFileName(),
-                           self.DEEPICT_TEMPORAL_PATH, self._getExtraPath(self.FILTERED_TOMO_FN)))
+        Plugin.runDeepict(self, PYTHON, '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/scripts/segment.py --config_file %s --pythonpath %s --tomo_name %s --gpu 0'
+                        % (os.path.join(self.getFolder(inputTom, tomId),'config.yaml'),
+                           '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/src',
+                           os.path.join(self.getFolder(inputTom, tomId), os.path.basename(inputTom[tomId].getFileName()))))
         
     def assemblePredictionStep(self):
         # Assemnble the segmentated patches
@@ -207,7 +291,8 @@ class DeepictSegmentation(Protocol):
         # preguntar params
             Plugin.runDeepict(self, PYTHON, '$(which segment.py) --config_file %s --pythonpath %s --tomo_name %s'
                         % (self.inputTomogram.get().getFileName(),
-                           self.DEEPICT_TEMPORAL_PATH, self._getExtraPath(self.FILTERED_TOMO_FN)))
+                           self.DEEPICT_TEMPORAL_PATH,
+                           os.path.join(self.getFolder(inputTom, tomId),self.FILTERED_TOMO_FN)))
     '''
     def generateConfigFile():
         header = ['tomo_name','raw_tomo','filtered_tomo', 'no_mask']
@@ -252,6 +337,14 @@ class DeepictSegmentation(Protocol):
             d['postprocessing_clustering']['region_mask'] = 'no_mask'
             save_yaml(d, user_config_file)
     '''
+    def getFolder(self, inputTom, tomId):
+        ts = inputTom[tomId]
+        tsId = ts.getTsId()
+
+        #Defining the output folder
+        tomoPath = self._getExtraPath(tsId)
+        return tomoPath
+
     # --------------------------- INFO functions -----------------------------------
     def _summary(self):
         """ Summarize what the protocol has done"""

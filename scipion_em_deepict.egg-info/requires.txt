@@ -3,3 +3,4 @@ scipion-em
 mrcfile
 tensorboardX
 scipy
+pyyaml

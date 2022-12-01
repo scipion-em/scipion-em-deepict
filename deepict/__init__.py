@@ -75,8 +75,11 @@ class Plugin(pwem.Plugin):
 
         installationCmd += 'conda create -y -n %s -c conda-forge -c anaconda python=3.8 && ' % DEEPICT_ENV_NAME
         installationCmd += 'conda install -y pandas && '
+        installationCmd += 'conda install -y pytorch pytorch torchvision && '
         installationCmd += 'pip install mrcfile && '
         installationCmd += 'pip install scipy && '
+        installationCmd += 'pip install pyyaml && '
+        installationCmd += 'pip install h5py && '
         #installationCmd += 'conda install -n %s -c conda-forge mamba && ' % DEEPICT_ENV_NAME
 
         # Activate new the environment

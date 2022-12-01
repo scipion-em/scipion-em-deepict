@@ -1,5 +1,3 @@
 scipion-pyworkflow
 scipion-em
-mrcfile
-tensorboardX
-scipy
+pyyaml
