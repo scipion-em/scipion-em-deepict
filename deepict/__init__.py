@@ -38,12 +38,14 @@ __version__ = "0"
 class Plugin(pwem.Plugin):
 
     _homeVar = DEEPICT_HOME
+    _pathVars = [DEEPICT_HOME]
     #_url = 'https://github.com/scipion-em/scipion-em-deepict'
 
     @classmethod
     def _defineVariables(cls):
-        # cryoCARE does NOT need EmVar because it uses a conda environment.
+        # DeePiCt does NOT need EmVar because it uses a conda environment.
         cls._defineVar(DEEPICT, DEFAULT_ACTIVATION_CMD)
+        cls._defineEmVar(DEEPICT_HOME, 'DeePiCt-' + VERSION)
 
     @classmethod
     def getDeepictEnvActivation(cls):
@@ -124,7 +126,9 @@ class Plugin(pwem.Plugin):
     def runDeepict(cls, protocol, program, args, cwd=None, gpuId='0'):
         """ Run DeePict command from a given protocol. """
         print("init --> runDeepict") 
-        print(cls.getCondaActivationCmd())
+        script = os.path.join(cls.getHome(), args)
         fullProgram = '%s %s' % (cls.getCondaActivationCmd(),
                                        program)
-        protocol.runJob(fullProgram, args, env=cls.getEnviron(gpuId=gpuId), cwd=cwd, numberOfMpi=1)
+
+        print("protocol -> " + str(protocol) + "\n program -> "+ str(program) + "\n args -> " + str(args) + "\n cwd -> " + str(cwd))
+        protocol.runJob(fullProgram, script, env=cls.getEnviron(gpuId=gpuId), cwd=cwd, numberOfMpi=1)

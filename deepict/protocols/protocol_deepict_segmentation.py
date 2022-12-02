@@ -180,30 +180,26 @@ class DeepictSegmentation(Protocol):
 
     def extractSpectrumStep(self, inputTom, tomId):
         # python extract_spectrum.py --input <input_tomo.mrc> --output <amp_spectrum.tsv>
-        Plugin.runDeepict(self, PYTHON, '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/spectrum_filter/extract_spectrum.py --input %s --output %s'
+        Plugin.runDeepict(self, PYTHON, 'DeePiCt/spectrum_filter/extract_spectrum.py --input %s --output %s'
                         % (inputTom[tomId].getFileName(),
                            os.path.join(self.getFolder(inputTom, tomId), self.AMP_SPECTRUM_FN)))
 
     def matchSpectrumStep(self, inputTom, tomId):
         # say what the parameter says!!
-        Plugin.runDeepict(self, PYTHON, '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/spectrum_filter/match_spectrum.py --input %s --target %s --output %s'
+        Plugin.runDeepict(self, PYTHON, 'DeePiCt/spectrum_filter/match_spectrum.py --input %s --target %s --output %s'
                         % (inputTom[tomId].getFileName(),
                            os.path.join(self.getFolder(inputTom, tomId), self.AMP_SPECTRUM_FN),
                            os.path.join(self.getFolder(inputTom, tomId), self.FILTERED_TOMO_FN)))
 
 
     def createConfigFiles(self, inputTom, tomId, inputMask):
-        from posixpath import split
-
-        scriptdir = '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/scripts'
-        srcdir = '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/src/'
-        original_config_file = '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/config.yaml'
-        model_path = '/home/kdna/opt/scipion/software/em/DeePiCt-0/model_weights.pth'
+        original_config_file = os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/config.yaml')
+        model_path = os.path.join(Plugin.getHome(), 'model_weights.pth')
 
         tomo_name = inputTom[tomId].getFileName() #@param {type:"string"}
 
         #TODO revisar nombre
-        tomogram_path = os.path.basename(self._getExtraPath(self.FILTERED_TOMO_FN))
+        tomogram_path = os.path.join(self.getFolder(inputTom, tomId), self.FILTERED_TOMO_FN)#os.path.basename(self._getExtraPath(self.FILTERED_TOMO_FN))
 
         mask_path = inputMask[tomId].getFileName()
         os.path.join(self.getFolder(inputTom, tomId), self.AMP_SPECTRUM_FN)
@@ -271,18 +267,19 @@ class DeepictSegmentation(Protocol):
         print(os.path.join(self.getFolder(inputTom, tomId), os.path.basename(inputTom[tomId].getFileName())))
         print("Basename")
         print(os.path.basename(inputTom[tomId].getFileName()))
-        Plugin.runDeepict(self, PYTHON, '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/scripts/generate_prediction_partition.py --config_file %s --pythonpath %s --tomo_name %s'
+        Plugin.runDeepict(self, PYTHON, 'DeePiCt/3d_cnn/scripts/generate_prediction_partition.py --config_file %s --pythonpath %s --tomo_name %s'
                         % (os.path.join(self.getFolder(inputTom, tomId), 'config.yaml'),
-                           '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/src',
-                           os.path.splitext(os.path.basename(inputTom[tomId].getFileName()))[0]))
+                           os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/src'),
+                           inputTom[tomId].getFileName()))
+                           #os.path.splitext(os.path.basename(inputTom[tomId].getFileName()))[0]))
 
     def segmentStep(self, inputTom, tomId):
         # Create the segmentation of the 64^3 patches
         # TODO 
         # preguntar params
-        Plugin.runDeepict(self, PYTHON, '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/scripts/segment.py --config_file %s --pythonpath %s --tomo_name %s --gpu 0'
+        Plugin.runDeepict(self, PYTHON, 'DeePiCt/3d_cnn/scripts/segment.py --config_file %s --pythonpath %s --tomo_name %s --gpu 0'
                         % (os.path.join(self.getFolder(inputTom, tomId),'config.yaml'),
-                           '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/src',
+                           'DeePiCt/3d_cnn/src',
                            os.path.join(self.getFolder(inputTom, tomId), os.path.basename(inputTom[tomId].getFileName()))))
         
     def assemblePredictionStep(self):
