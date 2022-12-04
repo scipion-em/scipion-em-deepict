@@ -282,7 +282,7 @@ class DeepictSegmentation(Protocol):
                            'DeePiCt/3d_cnn/src',
                            os.path.join(self.getFolder(inputTom, tomId), os.path.basename(inputTom[tomId].getFileName()))))
         
-    def assemblePredictionStep(self):
+    def assemblePredictionStep(self, inputTom, tomId):
         # Assemnble the segmentated patches
         # TODO 
         # preguntar params
