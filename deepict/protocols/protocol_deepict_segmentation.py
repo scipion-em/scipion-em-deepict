@@ -199,83 +199,6 @@ class DeepictSegmentation(Protocol):
                            os.path.join(self.getFolder(inputTom, tomId), self.AMP_SPECTRUM_FN),
                            os.path.join(self.getFolder(inputTom, tomId), self.FILTERED_TOMO_FN)))
 
-
-    def createConfigFiles(self, inputTom, tomId, inputMask):
-        original_config_file = os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/config.yaml')
-
-        if self.tomogramOption.get() == self.MEMBRANE:
-            modelWeights = os.path.join('models', 'membraneModel.pth')
-        elif self.tomogramOption.get() == self.MICROTUBULE:
-            modelWeights = os.path.join('models', 'membraneModel.pth')
-        elif  self.tomogramOption.get() == self.MICROTUBULE:
-            modelWeights = os.path.join('models', 'membraneModel.pth')
-        elif self.tomogramOption.get() == self.FAS:
-            modelWeights = os.path.join('models', 'membraneModel.pth')
-
-        model_path = os.path.join(Plugin.getHome(), modelWeights)
-
-        tomo_name = inputTom[tomId].getFileName() #@param {type:"string"}
-
-        #TODO revisar nombre
-        tomogram_path = os.path.join(self.getFolder(inputTom, tomId), self.FILTERED_TOMO_FN)#os.path.basename(self._getExtraPath(self.FILTERED_TOMO_FN))
-
-        mask_path = inputMask[tomId].getFileName()
-        os.path.join(self.getFolder(inputTom, tomId), self.AMP_SPECTRUM_FN)
-        user_config_file = os.path.join(self.getFolder(inputTom, tomId), 'config.yaml')  #@param {type:"string"}
-        user_data_file = os.path.join(self.getFolder(inputTom, tomId), 'data.csv') #@param {type:"string"}
-        user_prediction_folder = self.getFolder(inputTom, tomId)  #@param {type:"string"}
-        user_work_folder = self.getFolder(inputTom, tomId)  #@param {type:"string"}
-
-        os.makedirs(os.path.split(user_config_file)[0], exist_ok=True)
-        os.makedirs(os.path.split(user_data_file)[0], exist_ok=True)
-        os.makedirs(os.path.split(user_prediction_folder)[0], exist_ok=True)
-        os.makedirs(os.path.split(user_work_folder)[0], exist_ok=True)
-
-        import yaml
-
-        header = ['tomo_name','raw_tomo','filtered_tomo', 'no_mask']
-
-        # Define the elements of this list:
-        data = [tomo_name, '', tomogram_path, mask_path]
-
-        with open(user_data_file, 'w', encoding='UTF8') as f:
-            writer = csv.writer(f)
-
-            # write the header
-            writer.writerow(header)
-
-            # write the data
-            writer.writerow(data)
-        
-        data_dictionary = dict(zip(header, data))
-
-        def read_yaml(file_path):
-            with open(file_path, "r") as stream:
-                data = yaml.safe_load(stream)
-            return data
-
-        def save_yaml(data, file_path):
-            with open(file_path, 'w') as yaml_file:
-                yaml.dump(data, yaml_file, default_flow_style=False)
-
-        d = read_yaml(original_config_file)
-        d['dataset_table'] = user_data_file
-        d['output_dir'] = user_prediction_folder
-        d['work_dir'] = user_work_folder
-        d['model_path'] = f'{model_path}'
-        d['tomos_sets']['training_list'] = []
-        d['tomos_sets']['prediction_list'] = [f'{tomo_name}']
-        d['cross_validation']['active'] = False
-        d['training']['active'] = False
-        d['prediction']['active'] = True
-        d['evaluation']['particle_picking']['active'] = False
-        d['evaluation']['segmentation_evaluation']['active'] = False
-        d['training']['processing_tomo'] = 'filtered_tomo'
-        d['prediction']['processing_tomo'] = 'filtered_tomo'
-        d['postprocessing_clustering']['region_mask'] = 'no_mask'
-        save_yaml(d, user_config_file)
-
-        
     #TODO crear nuevos steps (punto 3 del notebook)
     def splitIntoPatchesStep(self, inputTom, tomId):
         # Create the 64^3 patches
@@ -319,6 +242,81 @@ class DeepictSegmentation(Protocol):
         tomoPath = self._getExtraPath(tsId)
         return tomoPath
 
+    def createConfigFiles(self, inputTom, tomId, inputMask):
+        original_config_file = os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/config.yaml')
+
+        if self.tomogramOption.get() == self.MEMBRANE:
+            modelWeights = os.path.join('models', 'membraneModel.pth')
+        elif self.tomogramOption.get() == self.MICROTUBULE:
+            modelWeights = os.path.join('models', 'membraneModel.pth')
+        elif self.tomogramOption.get() == self.MICROTUBULE:
+            modelWeights = os.path.join('models', 'membraneModel.pth')
+        elif self.tomogramOption.get() == self.FAS:
+            modelWeights = os.path.join('models', 'membraneModel.pth')
+
+        model_path = os.path.join(Plugin.getHome(), modelWeights)
+
+        tomo_name = inputTom[tomId].getFileName()  # @param {type:"string"}
+
+        # TODO revisar nombre
+        tomogram_path = os.path.join(self.getFolder(inputTom, tomId),
+                                     self.FILTERED_TOMO_FN)  # os.path.basename(self._getExtraPath(self.FILTERED_TOMO_FN))
+
+        mask_path = inputMask[tomId].getFileName()
+        os.path.join(self.getFolder(inputTom, tomId), self.AMP_SPECTRUM_FN)
+        user_config_file = os.path.join(self.getFolder(inputTom, tomId), 'config.yaml')  # @param {type:"string"}
+        user_data_file = os.path.join(self.getFolder(inputTom, tomId), 'data.csv')  # @param {type:"string"}
+        user_prediction_folder = self.getFolder(inputTom, tomId)  # @param {type:"string"}
+        user_work_folder = self.getFolder(inputTom, tomId)  # @param {type:"string"}
+
+        os.makedirs(os.path.split(user_config_file)[0], exist_ok=True)
+        os.makedirs(os.path.split(user_data_file)[0], exist_ok=True)
+        os.makedirs(os.path.split(user_prediction_folder)[0], exist_ok=True)
+        os.makedirs(os.path.split(user_work_folder)[0], exist_ok=True)
+
+        import yaml
+
+        header = ['tomo_name', 'raw_tomo', 'filtered_tomo', 'no_mask']
+
+        # Define the elements of this list:
+        data = [tomo_name, '', tomogram_path, mask_path]
+
+        with open(user_data_file, 'w', encoding='UTF8') as f:
+            writer = csv.writer(f)
+
+            # write the header
+            writer.writerow(header)
+
+            # write the data
+            writer.writerow(data)
+
+        data_dictionary = dict(zip(header, data))
+
+        def read_yaml(file_path):
+            with open(file_path, "r") as stream:
+                data = yaml.safe_load(stream)
+            return data
+
+        def save_yaml(data, file_path):
+            with open(file_path, 'w') as yaml_file:
+                yaml.dump(data, yaml_file, default_flow_style=False)
+
+        d = read_yaml(original_config_file)
+        d['dataset_table'] = user_data_file
+        d['output_dir'] = user_prediction_folder
+        d['work_dir'] = user_work_folder
+        d['model_path'] = f'{model_path}'
+        d['tomos_sets']['training_list'] = []
+        d['tomos_sets']['prediction_list'] = [f'{tomo_name}']
+        d['cross_validation']['active'] = False
+        d['training']['active'] = False
+        d['prediction']['active'] = True
+        d['evaluation']['particle_picking']['active'] = False
+        d['evaluation']['segmentation_evaluation']['active'] = False
+        d['training']['processing_tomo'] = 'filtered_tomo'
+        d['prediction']['processing_tomo'] = 'filtered_tomo'
+        d['postprocessing_clustering']['region_mask'] = 'no_mask'
+        save_yaml(d, user_config_file)
     # --------------------------- INFO functions -----------------------------------
     def _summary(self):
         """ Summarize what the protocol has done"""
