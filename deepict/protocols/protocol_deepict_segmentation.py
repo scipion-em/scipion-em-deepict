@@ -137,6 +137,7 @@ class DeepictSegmentation(Protocol):
         form.addParam('calculateMotl',
                       BooleanParam,
                       label='Calculate motl',
+                      default=False,
                       help='TODO')
 
         form.addParam('contactMode',

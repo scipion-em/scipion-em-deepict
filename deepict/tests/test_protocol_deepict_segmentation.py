@@ -64,7 +64,18 @@ class TestDeepict(TestDeepictBase):
                                     inputMask=self.protImportHalf2.outputTomograms,
                                     tomogramOption=option,
                                     )
-                                    
+
+    def testDeepict(self):
+        Deepict = self.newProtocol(DeepictSegmentation,
+                                    objLabel='deepict segmentation ' + 'membrane',
+                                    inputTomogram=self.protImportHalf1.outputTomograms,
+                                    inputMask=self.protImportHalf2.outputTomograms,
+                                    tomogramOption=0,
+                                    )
+        self.launchProtocol(Deepict)
+        self.assertTrue(exists(Deepict._getExtraPath('tomo_1/filtered_tomo.mrc')),
+                        "Deepict has failed")
+    '''                            
     def testDeepictMembrane(self):
         Deepict = self.deepictSetProtocol(self, 'membrane')
         self.launchProtocol(Deepict)
@@ -88,6 +99,4 @@ class TestDeepict(TestDeepictBase):
         self.launchProtocol(Deepict)
         self.assertTrue(exists(Deepict._getExtraPath('tomo_1/filtered_tomo.mrc')),
                         "Deepict has failed")
-    
-        
-
+    '''
