@@ -167,17 +167,18 @@ class DeepictSegmentation(Protocol):
     # --------------------------- STEPS functions ------------------------------
     def _insertAllSteps(self):
         # Insert processing steps
-        #self._insertFunctionStep('extractSpectrumStep')
+        inTomogram = self.inputTomogram.get()
+        inMask = self.inputMask.get()
 
-        for tom, inputMask in zip(self.inputTomogram.get(), self.inputMask.get()):
+        for tom, inputMask in zip(inTomogram, inMask):
             if tom.getObjId() == inputMask.getObjId():
                 tomId = tom.getObjId()
-                self._insertFunctionStep('setupFolderStep', self.inputTomogram.get(), tomId)
-                self._insertFunctionStep('extractSpectrumStep', self.inputTomogram.get(), tomId)
-                self._insertFunctionStep('matchSpectrumStep', self.inputTomogram.get(), tomId)
-                self._insertFunctionStep('createConfigFiles', self.inputTomogram.get(), tomId, self.inputMask.get())
-                self._insertFunctionStep('splitIntoPatchesStep', self.inputTomogram.get(), tomId)
-                self._insertFunctionStep('segmentStep', self.inputTomogram.get(), tomId)
+                self._insertFunctionStep('setupFolderStep', inTomogram, tomId)
+                self._insertFunctionStep('extractSpectrumStep',inTomogram, tomId)
+                self._insertFunctionStep('matchSpectrumStep', inTomogram, tomId)
+                self._insertFunctionStep('createConfigFiles', inTomogram, tomId, inMask)
+                self._insertFunctionStep('splitIntoPatchesStep', inTomogram, tomId)
+                self._insertFunctionStep('segmentStep', inTomogram, tomId)
 
     def setupFolderStep(self, inputTom, tomId):
         ts = inputTom[tomId]
@@ -194,42 +195,28 @@ class DeepictSegmentation(Protocol):
                            os.path.join(self.getFolder(inputTom, tomId), self.AMP_SPECTRUM_FN)))
 
     def matchSpectrumStep(self, inputTom, tomId):
-        # say what the parameter says!!
         Plugin.runDeepict(self, PYTHON, 'DeePiCt/spectrum_filter/match_spectrum.py --input %s --target %s --output %s'
                         % (inputTom[tomId].getFileName(),
                            os.path.join(self.getFolder(inputTom, tomId), self.AMP_SPECTRUM_FN),
                            os.path.join(self.getFolder(inputTom, tomId), self.FILTERED_TOMO_FN)))
 
-    #TODO crear nuevos steps (punto 3 del notebook)
+    #TODO create new steps (notebook section 3)
     def splitIntoPatchesStep(self, inputTom, tomId):
         # Create the 64^3 patches
-        # TODO 
-        # preguntar params
-        print("Full route")
-        print(os.path.join(self.getFolder(inputTom, tomId), os.path.basename(inputTom[tomId].getFileName())))
-        print("Basename")
-        print(os.path.basename(inputTom[tomId].getFileName()))
         Plugin.runDeepict(self, PYTHON, 'DeePiCt/3d_cnn/scripts/generate_prediction_partition.py --config_file %s --pythonpath %s --tomo_name %s'
                         % (os.path.join(self.getFolder(inputTom, tomId), 'config.yaml'),
                            os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/src'),
                            inputTom[tomId].getFileName()))
 
     def segmentStep(self, inputTom, tomId):
-        # Create the segmentation of the 64^3 patches
-        # TODO 
-        # preguntar params
-        print('This step')
         Plugin.runDeepict(self, PYTHON, 'DeePiCt/3d_cnn/scripts/segment.py --config_file %s --pythonpath %s --tomo_name %s --gpu %i'
                         % (os.path.join(self.getFolder(inputTom, tomId), 'config.yaml'),
                            os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/src'),
                            os.path.join(self.getFolder(inputTom, tomId), os.path.basename(inputTom[tomId].getFileName())),
                           self.getGpuList()[0]))
-        print('end step')
-        
+
     def assemblePredictionStep(self, inputTom, tomId):
         # Assemnble the segmentated patches
-        # TODO 
-        # preguntar params
         Plugin.runDeepict(self, PYTHON, 'DeePiCt/3d_cnn/scripts/assemble_prediction.py --config_file %s --pythonpath %s --tomo_name %s'
                           % (os.path.join(self.getFolder(inputTom, tomId), 'config.yaml'),
                              os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/src'),
@@ -243,18 +230,25 @@ class DeepictSegmentation(Protocol):
         tomoPath = self._getExtraPath(tsId)
         return tomoPath
 
+    def defineImportanVariables(self):
+        pass
+
     def createConfigFiles(self, inputTom, tomId, inputMask):
         original_config_file = os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/config.yaml')
+        tomoOpt = self.tomogramOption.get()
 
-        if self.tomogramOption.get() == self.MEMBRANE:
+        if tomoOpt == self.MEMBRANE:
             modelWeights = os.path.join('models', 'membraneModel.pth')
-        elif self.tomogramOption.get() == self.MICROTUBULE:
-            modelWeights = os.path.join('models', 'membraneModel.pth')
-        elif self.tomogramOption.get() == self.MICROTUBULE:
-            modelWeights = os.path.join('models', 'membraneModel.pth')
-        elif self.tomogramOption.get() == self.FAS:
-            modelWeights = os.path.join('models', 'membraneModel.pth')
+        elif tomoOpt == self.MICROTUBULE:
+            modelWeights = os.path.join('models', 'microtubuleModel.pth')
+        elif tomoOpt == self.RIBOSOME:
+            modelWeights = os.path.join('models', 'ribosomeModel.pth')
+        elif tomoOpt == self.FAS:
+            modelWeights = os.path.join('models', 'fasModel.pth')
 
+        print('................')
+        print(Plugin.getHome())
+        print('................')
         model_path = os.path.join(Plugin.getHome(), modelWeights)
 
         tomo_name = inputTom[tomId].getFileName()  # @param {type:"string"}
@@ -263,11 +257,15 @@ class DeepictSegmentation(Protocol):
         tomogram_path = os.path.join(self.getFolder(inputTom, tomId),
                                      self.FILTERED_TOMO_FN)  # os.path.basename(self._getExtraPath(self.FILTERED_TOMO_FN))
 
-        mask_path = inputMask[tomId].getFileName()
+        mask_path = ''
+        if self.inputMask:
+            mask_path = inputMask[tomId].getFileName()
+
         os.path.join(self.getFolder(inputTom, tomId), self.AMP_SPECTRUM_FN)
         user_config_file = os.path.join(self.getFolder(inputTom, tomId), 'config.yaml')  # @param {type:"string"}
         user_data_file = os.path.join(self.getFolder(inputTom, tomId), 'data.csv')  # @param {type:"string"}
         user_prediction_folder = self.getFolder(inputTom, tomId)  # @param {type:"string"}
+        #TODO: user_work_folder should be tmp
         user_work_folder = self.getFolder(inputTom, tomId)  # @param {type:"string"}
 
         os.makedirs(os.path.split(user_config_file)[0], exist_ok=True)
