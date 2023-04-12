@@ -25,14 +25,6 @@
 # *
 # **************************************************************************
 
-
-"""
-Describe your python module here:
-This module will provide the traditional Hello world example
-"""
-from email.policy import default
-
-#from sqlalchemy import true
 from pyworkflow.protocol import Protocol, params, Integer
 from pyworkflow.utils import Message
 from pyworkflow.protocol import EnumParam, IntParam, FloatParam, BooleanParam, LT, GT
@@ -46,20 +38,19 @@ class DeepictSegmentation(Protocol):
     """
     TODO resumir
     Cryo-electron tomograms capture a wealth of structural information on the molecular constituents
-    of cells and tissues. We present DeePiCt (Deep Picker in Context), an open-source deep-learning
+    of cells and tissues. We present DeePiCt (Deep Picker in Context) is a deep-learning
     framework for supervised structure segmentation and macromolecular complex localization in
     cellular cryo-electron tomography. To train and benchmark DeePiCt on experimental data, we
     comprehensively annotated 20 tomograms of Schizosaccharomyces pombe for ribosomes, fatty acid
-    synthases, membranes, nuclear pore complexes, organelles and cytosol. By comparing our method to
-    state-of-the-art approaches on this dataset, we show its unique ability to identify low-abundance
-    and low-density complexes. We use DeePiCt to study compositionally-distinct subpopulations of
-    cellular ribosomes, with emphasis on their contextual association with mitochondria and the
-    endoplasmic reticulum. Finally, by applying pre-trained networks to a HeLa cell dataset, we
-    demonstrate that DeePiCt achieves high-quality predictions in unseen datasets from different
-    biological species in a matter of minutes. The comprehensively annotated experimental data and
-    pre-trained networks are provided for immediate exploitation by the community.
+    synthases, membranes, nuclear pore complexes, organelles and cytosol.
     """
     _label = 'Segmentation'
+
+    tomo_name = None
+    tomogram_path = None
+    mask_path = None
+
+
     RIBOSOME    = 0
     MEMBRANE    = 1
     MICROTUBULE = 2
@@ -70,10 +61,8 @@ class DeepictSegmentation(Protocol):
     COLOCALIZATION  = 2
 
     AMP_SPECTRUM_FN     = 'amp_spectrum.tsv'
-    FILTERED_TOMO_FN    = 'filtered_tomo.mrc'
+    FILTERED_TOMO_FN    = 'match_spectrum_filt.mrc'
 
-    #EXTRA_PATH = self._getExtraPath() -> parametro dentro concatena a la ruta
-    #TODO Icono
     DEEPICT_TEMPORAL_PATH = '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/src'
 
     # -------------------------- DEFINE param functions ----------------------
@@ -89,14 +78,13 @@ class DeepictSegmentation(Protocol):
                       label='Input tomograms',
                       important=True,
                       allowsNull=False,
-                      help='Set of reconstructed tomograms.')
+                      help='Set of reconstructed tomograms to be segmented by DeePiCt')
         
         form.addParam('inputMask', params.PointerParam,
                       pointerClass='SetOfTomograms',
                       label='Mask',
-                      important=False,
-                      allowsNull=False,
-                      help='Mask.')
+                      allowsNull=True,
+                      help='Set of tomo masks that helps the DeePiCt image processing.')
 
         form.addParam('tomogramOption',
                       EnumParam,
@@ -170,59 +158,123 @@ class DeepictSegmentation(Protocol):
         inTomogram = self.inputTomogram.get()
         inMask = self.inputMask.get()
 
-        for tom, inputMask in zip(inTomogram, inMask):
-            if tom.getObjId() == inputMask.getObjId():
-                tomId = tom.getObjId()
-                self._insertFunctionStep('setupFolderStep', inTomogram, tomId)
-                self._insertFunctionStep('extractSpectrumStep',inTomogram, tomId)
-                self._insertFunctionStep('matchSpectrumStep', inTomogram, tomId)
-                self._insertFunctionStep('createConfigFiles', inTomogram, tomId, inMask)
-                self._insertFunctionStep('splitIntoPatchesStep', inTomogram, tomId)
-                self._insertFunctionStep('segmentStep', inTomogram, tomId)
+        for tom in inTomogram:
+            tomId = tom.getObjId()
+            self._insertFunctionStep('setupFolderStep', inTomogram, tomId)
+            self._insertFunctionStep('spectrumStep', inTomogram, tomId)
+            self._insertFunctionStep('createConfigFiles', inTomogram, tomId)
+            self._insertFunctionStep('splitIntoPatchesStep', inTomogram, tomId)
+            self._insertFunctionStep('segmentStep', inTomogram, tomId)
+            self._insertFunctionStep('assemblePredictionStep', inTomogram, tomId)
+            self._insertFunctionStep('postProcessingStep', inTomogram, tomId)
 
     def setupFolderStep(self, inputTom, tomId):
+        # Obtaining the ts and the tsId
         ts = inputTom[tomId]
         tsId = ts.getTsId()
 
-        #Defining the tomogram folder
+        # Creating the tomogram folder
         tomoPath = self._getExtraPath(tsId)
         os.mkdir(tomoPath)
 
-    def extractSpectrumStep(self, inputTom, tomId):
-        # python extract_spectrum.py --input <input_tomo.mrc> --output <amp_spectrum.tsv>
-        Plugin.runDeepict(self, PYTHON, 'DeePiCt/spectrum_filter/extract_spectrum.py --input %s --output %s'
-                        % (inputTom[tomId].getFileName(),
-                           os.path.join(self.getFolder(inputTom, tomId), self.AMP_SPECTRUM_FN)))
 
-    def matchSpectrumStep(self, inputTom, tomId):
+    def spectrumStep(self, inputTom, tomId):
+        input_tomo = inputTom[tomId].getFileName()
+        target_spectrum = os.path.join(self.getTsIdFolder(inputTom, tomId), self.AMP_SPECTRUM_FN)
+        filtered_tomo = os.path.join(self.getTsIdFolder(inputTom, tomId), self.FILTERED_TOMO_FN)
+
+        Plugin.runDeepict(self, PYTHON, 'DeePiCt/spectrum_filter/extract_spectrum.py --input %s --output %s'
+                        % (input_tomo, target_spectrum))
+
         Plugin.runDeepict(self, PYTHON, 'DeePiCt/spectrum_filter/match_spectrum.py --input %s --target %s --output %s'
-                        % (inputTom[tomId].getFileName(),
-                           os.path.join(self.getFolder(inputTom, tomId), self.AMP_SPECTRUM_FN),
-                           os.path.join(self.getFolder(inputTom, tomId), self.FILTERED_TOMO_FN)))
+                          % (input_tomo, target_spectrum, filtered_tomo))
+
 
     #TODO create new steps (notebook section 3)
     def splitIntoPatchesStep(self, inputTom, tomId):
         # Create the 64^3 patches
+        fnConfig = os.path.join(self.getTsIdFolder(inputTom, tomId), 'config.yaml')
+        pathPython = os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/src')
+        tomo_name = inputTom[tomId].getTsId()
+
         Plugin.runDeepict(self, PYTHON, 'DeePiCt/3d_cnn/scripts/generate_prediction_partition.py --config_file %s --pythonpath %s --tomo_name %s'
-                        % (os.path.join(self.getFolder(inputTom, tomId), 'config.yaml'),
-                           os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/src'),
-                           inputTom[tomId].getFileName()))
+                        % (fnConfig, pathPython, tomo_name))
+
 
     def segmentStep(self, inputTom, tomId):
+        tsid = inputTom[tomId].getTsId()
+
         Plugin.runDeepict(self, PYTHON, 'DeePiCt/3d_cnn/scripts/segment.py --config_file %s --pythonpath %s --tomo_name %s --gpu %i'
-                        % (os.path.join(self.getFolder(inputTom, tomId), 'config.yaml'),
+                        % (os.path.join(self.getTsIdFolder(inputTom, tomId), 'config.yaml'),
                            os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/src'),
-                           os.path.join(self.getFolder(inputTom, tomId), os.path.basename(inputTom[tomId].getFileName())),
-                          self.getGpuList()[0]))
+                           tsid, self.getGpuList()[0]))
 
     def assemblePredictionStep(self, inputTom, tomId):
+        tsid = inputTom[tomId].getTsId()
         # Assemnble the segmentated patches
         Plugin.runDeepict(self, PYTHON, 'DeePiCt/3d_cnn/scripts/assemble_prediction.py --config_file %s --pythonpath %s --tomo_name %s'
-                          % (os.path.join(self.getFolder(inputTom, tomId), 'config.yaml'),
-                             os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/src'),
-                             os.path.join(self.getFolder(inputTom, tomId), os.path.basename(inputTom[tomId].getFileName()))))
+                          % (os.path.join(self.getTsIdFolder(inputTom, tomId), 'config.yaml'),
+                             os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/src'), tsid))
 
-    def getFolder(self, inputTom, tomId):
+    def postProcessingStep(self, inputTom, tomId):
+        import yaml
+        def read_yaml(file_path):
+            with open(file_path, "r") as stream:
+                data = yaml.safe_load(stream)
+            return data
+
+        def save_yaml(data, file_path):
+            with open(file_path, 'w') as yaml_file:
+                yaml.dump(data, yaml_file, default_flow_style=False)
+
+        user_config_file = os.path.join(self.getTsIdFolder(inputTom, tomId), 'config.yaml')
+        d = read_yaml(user_config_file)
+
+        # @markdown #### If you don't want to use the default parameters, unclick the button for `default_options` and define the parameters. Otherwise, the default options will be used.
+
+        default_options = True  # @param {type:"boolean"}
+
+        if default_options:
+            d['postprocessing_clustering']['active'] = True
+            d['postprocessing_clustering']['threshold'] = 0.5
+            d['postprocessing_clustering']['min_cluster_size'] = 500
+            d['postprocessing_clustering']['max_cluster_size'] = None
+            d['postprocessing_clustering']['clustering_connectivity'] = 1
+            d['postprocessing_clustering']['calculate_motl'] = True
+            d['postprocessing_clustering']['ignore_border_thickness'] = 0
+            d['postprocessing_clustering']['region_mask'] = 'no_mask'
+            d['postprocessing_clustering']['contact_mode'] = 'intersection'
+            d['postprocessing_clustering']['contact_distance'] = 0
+        else:
+            threshold = 0.5  # @param {type:"number"}
+            min_cluster_size = 500  # @param {type:"integer"}
+            max_cluster_size = 0  # @param {type:"integer"}
+            clustering_connectivity = 1  # @param {type:"integer"}
+            calculate_motl = True  # @param {type:"boolean"}
+            contact_mode = 'intersection'  # @param ["contact", "colocalization", "intersection"]
+            contact_distance = 0  # @param {type:"integer"}
+            if max_cluster_size == 0:
+                max_cluster_size = None
+            d['postprocessing_clustering']['active'] = True
+            d['postprocessing_clustering']['threshold'] = threshold
+            d['postprocessing_clustering']['min_cluster_size'] = min_cluster_size
+            d['postprocessing_clustering']['max_cluster_size'] = max_cluster_size
+            d['postprocessing_clustering']['clustering_connectivity'] = clustering_connectivity
+            d['postprocessing_clustering']['calculate_motl'] = calculate_motl
+            d['postprocessing_clustering']['ignore_border_thickness'] = 0
+            d['postprocessing_clustering']['region_mask'] = 'no_mask'
+            d['postprocessing_clustering']['contact_mode'] = 'intersection'
+            d['postprocessing_clustering']['contact_distance'] = contact_distance
+
+        save_yaml(d, user_config_file)
+
+        tsid = inputTom[tomId].getTsId()
+
+        Plugin.runDeepict(self, PYTHON, 'DeePiCt/3d_cnn/scripts/clustering_and_cleaning.py --config_file %s --pythonpath %s --tomo_name %s'
+                          % (user_config_file, os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/src'), tsid))
+
+
+    def getTsIdFolder(self, inputTom, tomId):
         ts = inputTom[tomId]
         tsId = ts.getTsId()
 
@@ -233,8 +285,7 @@ class DeepictSegmentation(Protocol):
     def defineImportanVariables(self):
         pass
 
-    def createConfigFiles(self, inputTom, tomId, inputMask):
-        original_config_file = os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/config.yaml')
+    def getModel(self):
         tomoOpt = self.tomogramOption.get()
 
         if tomoOpt == self.MEMBRANE:
@@ -246,27 +297,34 @@ class DeepictSegmentation(Protocol):
         elif tomoOpt == self.FAS:
             modelWeights = os.path.join('models', 'fasModel.pth')
 
-        print('................')
-        print(Plugin.getHome())
-        print('................')
-        model_path = os.path.join(Plugin.getHome(), modelWeights)
+        return modelWeights
 
-        tomo_name = inputTom[tomId].getFileName()  # @param {type:"string"}
 
-        # TODO revisar nombre
-        tomogram_path = os.path.join(self.getFolder(inputTom, tomId),
-                                     self.FILTERED_TOMO_FN)  # os.path.basename(self._getExtraPath(self.FILTERED_TOMO_FN))
+    def createConfigFiles(self, inputTom, tomId):
+        def read_yaml(file_path):
+            with open(file_path, "r") as stream:
+                data = yaml.safe_load(stream)
+            return data
+
+        def save_yaml(data, file_path):
+            with open(file_path, 'w') as yaml_file:
+                yaml.dump(data, yaml_file, default_flow_style=False)
+
+        model_path = os.path.join(Plugin.getHome(), self.getModel())
+
+        tomo_name = inputTom[tomId].getTsId()#inputTom[tomId].getFileName()
+        tomogram_path = os.path.join(self.getTsIdFolder(inputTom, tomId), self.FILTERED_TOMO_FN)
 
         mask_path = ''
-        if self.inputMask:
-            mask_path = inputMask[tomId].getFileName()
+        #if self.inputMask:
+        #    mask_path = self.inputMask[tomId].getFileName()
 
-        os.path.join(self.getFolder(inputTom, tomId), self.AMP_SPECTRUM_FN)
-        user_config_file = os.path.join(self.getFolder(inputTom, tomId), 'config.yaml')  # @param {type:"string"}
-        user_data_file = os.path.join(self.getFolder(inputTom, tomId), 'data.csv')  # @param {type:"string"}
-        user_prediction_folder = self.getFolder(inputTom, tomId)  # @param {type:"string"}
+        user_config_file = os.path.join(self.getTsIdFolder(inputTom, tomId), 'config.yaml')
+        user_data_file = os.path.join(self.getTsIdFolder(inputTom, tomId), 'data.csv')
+        user_prediction_folder = self.getTsIdFolder(inputTom, tomId)
+
         #TODO: user_work_folder should be tmp
-        user_work_folder = self.getFolder(inputTom, tomId)  # @param {type:"string"}
+        user_work_folder = self.getTsIdFolder(inputTom, tomId)
 
         os.makedirs(os.path.split(user_config_file)[0], exist_ok=True)
         os.makedirs(os.path.split(user_data_file)[0], exist_ok=True)
@@ -291,15 +349,7 @@ class DeepictSegmentation(Protocol):
 
         data_dictionary = dict(zip(header, data))
 
-        def read_yaml(file_path):
-            with open(file_path, "r") as stream:
-                data = yaml.safe_load(stream)
-            return data
-
-        def save_yaml(data, file_path):
-            with open(file_path, 'w') as yaml_file:
-                yaml.dump(data, yaml_file, default_flow_style=False)
-
+        original_config_file = os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/config.yaml')
         d = read_yaml(original_config_file)
         d['dataset_table'] = user_data_file
         d['output_dir'] = user_prediction_folder
@@ -316,6 +366,7 @@ class DeepictSegmentation(Protocol):
         d['prediction']['processing_tomo'] = 'filtered_tomo'
         d['postprocessing_clustering']['region_mask'] = 'no_mask'
         save_yaml(d, user_config_file)
+
     # --------------------------- INFO functions -----------------------------------
     def _summary(self):
         """ Summarize what the protocol has done"""
