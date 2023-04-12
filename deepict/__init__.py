@@ -75,31 +75,27 @@ class Plugin(pwem.Plugin):
         # Create the environment
         installationCmd += ' git clone https://github.com/ZauggGroup/DeePiCt.git && '
 
-        installationCmd += 'conda create -y -n %s -c conda-forge -c anaconda python=3.8 && ' % DEEPICT_ENV_NAME
-        installationCmd += 'conda install -y pandas && '
-        installationCmd += 'conda install -y pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.6 -c pytorch -c conda-forge &&' #conda install -y pytorch pytorch torchvision cudatoolkit=11.6 && '
+        installationCmd += 'conda create -y -n %s python=3.8 -c conda-forge -c anaconda && ' % DEEPICT_ENV_NAME
+        installationCmd += 'conda activate %s && ' % DEEPICT_ENV_NAME
 
+        #installationCmd += 'conda install -y pytorch==1.12.1 torchvision==0.15.1 torchaudio==2.1.0 cudatoolkit=11.8 -c pytorch -c conda-forge &&' #conda install -y pytorch pytorch torchvision cudatoolkit=11.6 && '
+        #installationCmd += 'conda install -y torchvision==0.15.1 torchaudio==2.1.0 cudatoolkit=11.8 -c pytorch -c conda-forge &&'
+        installationCmd += 'conda install -y cudatoolkit==11.8 -c conda-forge &&'
+        installationCmd += 'conda install -y pytorch torchvision torchaudio -c pytorch &&'
+        #installationCmd += 'conda install -c pytorch pytorch-gpu torchvision &&'
+
+        installationCmd += 'pip install pandas==1.5.3 && '
         installationCmd += 'pip install mrcfile && '
         installationCmd += 'pip install scipy && '
         installationCmd += 'pip install pyyaml && '
+        installationCmd += 'pip install tqdm && '
         installationCmd += 'pip install h5py && '
         installationCmd += 'pip install tensorboardX && '
 
-        #installationCmd += 'conda install -n %s -c conda-forge mamba && ' % DEEPICT_ENV_NAME
 
         # Activate new the environment
         installationCmd += 'conda activate %s && ' % DEEPICT_ENV_NAME
 
-        
-        #installationCmd += 'pip install tensorboardX && '
-
-        # Install non-conda required packages
-        #installationCmd += 'mamba create -c conda-forge -c bioconda -n snakemake snakemake==5.13.0 && '
-        #installationCmd += 'conda activate snakemake && '
-        
-        #installationCmd += 'conda install -c -y pytorch pytorch torchvision && '
-        #installationCmd += 'conda install -c -y anaconda keras-gpu=2.3.1'
-        
         installationCmd += 'touch %s' % DEEPICT_INSTALLED
         
         deeepict_commands = [(installationCmd, DEEPICT_INSTALLED)]
@@ -126,12 +122,12 @@ class Plugin(pwem.Plugin):
         return neededProgs
 
     @classmethod
+    def activatingDeepict(cls):
+        return 'conda activate %s ' % DEEPICT_ENV_NAME
+
+    @classmethod
     def runDeepict(cls, protocol, program, args, cwd=None, gpuId='0'):
         """ Run DeePict command from a given protocol. """
-        print("init --> runDeepict") 
         script = os.path.join(cls.getHome(), args)
-        fullProgram = '%s %s' % (cls.getCondaActivationCmd(),
-                                       program)
-
-        print("protocol -> " + str(protocol) + "\n program -> "+ str(program) + "\n args -> " + str(args) + "\n cwd -> " + str(cwd))
+        fullProgram = '%s %s && %s' % (cls.getCondaActivationCmd(), cls.activatingDeepict(), program)
         protocol.runJob(fullProgram, script, env=cls.getEnviron(gpuId=gpuId), cwd=cwd, numberOfMpi=1)
