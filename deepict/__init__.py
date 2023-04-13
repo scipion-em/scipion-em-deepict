@@ -77,17 +77,13 @@ class Plugin(pwem.Plugin):
 
         installationCmd += 'conda create -y -n %s python=3.7 -c conda-forge -c anaconda && ' % DEEPICT_ENV_NAME
         installationCmd += 'conda activate %s && ' % DEEPICT_ENV_NAME
-
-        #installationCmd += 'conda install -y pytorch==1.12.1 torchvision==0.15.1 torchaudio==2.1.0 cudatoolkit=11.8 -c pytorch -c conda-forge &&' #conda install -y pytorch pytorch torchvision cudatoolkit=11.6 && '
-        #installationCmd += 'conda install -y torchvision==0.15.1 torchaudio==2.1.0 cudatoolkit=11.8 -c pytorch -c conda-forge &&'
         installationCmd += 'conda install -y cudatoolkit==11.8 -c conda-forge &&'
-        #installationCmd += 'conda install -y pytorch torchvision torchaudio -c pytorch &&'
-        #installationCmd += 'conda install -c pytorch pytorch-gpu torchvision &&'
 
         installationCmd += 'pip install torch torchvision torchaudio &&'
         installationCmd += 'pip install pandas && '
         installationCmd += 'pip install mrcfile && '
         installationCmd += 'pip install scipy && '
+        installationCmd += 'pip install scikit-image && '
         installationCmd += 'pip install pyyaml && '
         installationCmd += 'pip install tqdm && '
         installationCmd += 'pip install h5py && '
