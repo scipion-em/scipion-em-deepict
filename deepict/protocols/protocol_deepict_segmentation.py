@@ -369,7 +369,7 @@ class DeepictSegmentation(EMProtocol, ProtTomoBase):
         tsId = ts.getTsId()
 
         typeOfModel = os.path.split(os.path.splitext(self.getModel())[0])[1]
-        print(typeOfModel)
+
         predfolder = os.path.join('predictions', typeOfModel, tsId, 'memb')
         outputSeg = os.path.join(self._getExtraPath(tsId), predfolder)
 
@@ -380,7 +380,7 @@ class DeepictSegmentation(EMProtocol, ProtTomoBase):
                                              'post_processed_prediction.mrc'))
         newTomogram.setTsId(tsId)
         newTomogram.setSamplingRate(ts.getSamplingRate())
-        print(os.path.join(outputSeg,'post_processed_prediction.mrc'))
+
         # Set default tomogram origin
         newTomogram.setOrigin(newOrigin=None)
         newTomogram.setAcquisition(ts.getAcquisition())
