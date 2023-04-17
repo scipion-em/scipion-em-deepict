@@ -28,28 +28,31 @@
 from pyworkflow.protocol import Protocol, params, Integer
 from pyworkflow.utils import Message
 from pyworkflow.protocol import EnumParam, IntParam, FloatParam, BooleanParam, LT, GT
+from pyworkflow.object import Set
 from scipion.constants import PYTHON
+from tomo.objects import Tomogram, SetOfTomograms
+from tomo.protocols import ProtTomoBase
+from pwem.protocols import EMProtocol
 import csv
 import os
 from deepict import Plugin
 
+import yaml
 
-class DeepictSegmentation(Protocol):
+class DeepictSegmentation(EMProtocol, ProtTomoBase):
     """
-    TODO resumir
     Cryo-electron tomograms capture a wealth of structural information on the molecular constituents
-    of cells and tissues. We present DeePiCt (Deep Picker in Context) is a deep-learning
+    of cells and tissues. DeePiCt (Deep Picker in Context) is a deep-learning
     framework for supervised structure segmentation and macromolecular complex localization in
-    cellular cryo-electron tomography. To train and benchmark DeePiCt on experimental data, we
-    comprehensively annotated 20 tomograms of Schizosaccharomyces pombe for ribosomes, fatty acid
-    synthases, membranes, nuclear pore complexes, organelles and cytosol.
+    cellular cryo-electron tomography (ribosomes, fatty acid
+    synthases, membranes, nuclear pore complexes, organelles and cytosol).
     """
     _label = 'Segmentation'
 
     tomo_name = None
     tomogram_path = None
     mask_path = None
-
+    Tomograms = None
 
     RIBOSOME    = 0
     MEMBRANE    = 1
@@ -59,6 +62,8 @@ class DeepictSegmentation(Protocol):
     INTERSECTION    = 0
     CONTACT         = 1
     COLOCALIZATION  = 2
+
+    OUTPUT_TOMOGRAMS_NAME = "Tomograms"
 
     AMP_SPECTRUM_FN     = 'amp_spectrum.tsv'
     FILTERED_TOMO_FN    = 'match_spectrum_filt.mrc'
@@ -95,7 +100,6 @@ class DeepictSegmentation(Protocol):
                       help='Choose the model based on what you want to segment. \n '
                            'The available models are prediction for membrane, ribosome, microtubules, and FAS.')
         
-        #TODO parametros de POST PROCESSING
         form.addSection(label='Post-processing')
         form.addParam('threshold',
                       FloatParam,
@@ -160,13 +164,15 @@ class DeepictSegmentation(Protocol):
 
         for tom in inTomogram:
             tomId = tom.getObjId()
-            self._insertFunctionStep('setupFolderStep', inTomogram, tomId)
-            self._insertFunctionStep('spectrumStep', inTomogram, tomId)
-            self._insertFunctionStep('createConfigFiles', inTomogram, tomId)
-            self._insertFunctionStep('splitIntoPatchesStep', inTomogram, tomId)
-            self._insertFunctionStep('segmentStep', inTomogram, tomId)
-            self._insertFunctionStep('assemblePredictionStep', inTomogram, tomId)
-            self._insertFunctionStep('postProcessingStep', inTomogram, tomId)
+            self._insertFunctionStep(self.setupFolderStep, inTomogram, tomId)
+            self._insertFunctionStep(self.spectrumStep, inTomogram, tomId)
+            self._insertFunctionStep(self.createConfigFiles, inTomogram, tomId)
+            self._insertFunctionStep(self.splitIntoPatchesStep, inTomogram, tomId)
+            self._insertFunctionStep(self.segmentStep, inTomogram, tomId)
+            self._insertFunctionStep(self.assemblePredictionStep, inTomogram, tomId)
+            self._insertFunctionStep(self.postProcessingStep, inTomogram, tomId)
+            self._insertFunctionStep(self.createOutputStep, tomId)
+        self._insertFunctionStep(self.closeOutputSetsStep)
 
     def setupFolderStep(self, inputTom, tomId):
         # Obtaining the ts and the tsId
@@ -216,57 +222,42 @@ class DeepictSegmentation(Protocol):
                           % (os.path.join(self.getTsIdFolder(inputTom, tomId), 'config.yaml'),
                              os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/src'), tsid))
 
-    def postProcessingStep(self, inputTom, tomId):
-        import yaml
-        def read_yaml(file_path):
-            with open(file_path, "r") as stream:
-                data = yaml.safe_load(stream)
-            return data
+    def read_yaml(self, file_path):
+        with open(file_path, "r") as stream:
+            data = yaml.safe_load(stream)
+        return data
 
-        def save_yaml(data, file_path):
-            with open(file_path, 'w') as yaml_file:
-                yaml.dump(data, yaml_file, default_flow_style=False)
+
+    def postProcessingStep(self, inputTom, tomId):
 
         user_config_file = os.path.join(self.getTsIdFolder(inputTom, tomId), 'config.yaml')
-        d = read_yaml(user_config_file)
+        d = self.read_yaml(user_config_file)
 
-        # @markdown #### If you don't want to use the default parameters, unclick the button for `default_options` and define the parameters. Otherwise, the default options will be used.
+        max_cluster_size = None
+        if self.maxClusterSize.get() != 0:
+            max_cluster_size = self.maxClusterSize.get()
 
-        default_options = True  # @param {type:"boolean"}
+        ctMOpt = self.contactMode.get()
 
-        if default_options:
-            d['postprocessing_clustering']['active'] = True
-            d['postprocessing_clustering']['threshold'] = 0.5
-            d['postprocessing_clustering']['min_cluster_size'] = 500
-            d['postprocessing_clustering']['max_cluster_size'] = None
-            d['postprocessing_clustering']['clustering_connectivity'] = 1
-            d['postprocessing_clustering']['calculate_motl'] = True
-            d['postprocessing_clustering']['ignore_border_thickness'] = 0
-            d['postprocessing_clustering']['region_mask'] = 'no_mask'
-            d['postprocessing_clustering']['contact_mode'] = 'intersection'
-            d['postprocessing_clustering']['contact_distance'] = 0
-        else:
-            threshold = 0.5  # @param {type:"number"}
-            min_cluster_size = 500  # @param {type:"integer"}
-            max_cluster_size = 0  # @param {type:"integer"}
-            clustering_connectivity = 1  # @param {type:"integer"}
-            calculate_motl = True  # @param {type:"boolean"}
-            contact_mode = 'intersection'  # @param ["contact", "colocalization", "intersection"]
-            contact_distance = 0  # @param {type:"integer"}
-            if max_cluster_size == 0:
-                max_cluster_size = None
-            d['postprocessing_clustering']['active'] = True
-            d['postprocessing_clustering']['threshold'] = threshold
-            d['postprocessing_clustering']['min_cluster_size'] = min_cluster_size
-            d['postprocessing_clustering']['max_cluster_size'] = max_cluster_size
-            d['postprocessing_clustering']['clustering_connectivity'] = clustering_connectivity
-            d['postprocessing_clustering']['calculate_motl'] = calculate_motl
-            d['postprocessing_clustering']['ignore_border_thickness'] = 0
-            d['postprocessing_clustering']['region_mask'] = 'no_mask'
-            d['postprocessing_clustering']['contact_mode'] = 'intersection'
-            d['postprocessing_clustering']['contact_distance'] = contact_distance
+        if ctMOpt == self.INTERSECTION:
+            contact_mode = 'intersection'
+        elif ctMOpt == self.CONTACT:
+            contact_mode = 'contact'
+        elif ctMOpt == self.COLOCALIZATION:
+            contact_mode = 'colocalization'
 
-        save_yaml(d, user_config_file)
+        d['postprocessing_clustering']['active'] = True
+        d['postprocessing_clustering']['threshold'] = self.threshold.get()
+        d['postprocessing_clustering']['min_cluster_size'] = self.minClusterSize.get()
+        d['postprocessing_clustering']['max_cluster_size'] = max_cluster_size
+        d['postprocessing_clustering']['clustering_connectivity'] = self.clusteringConnectivity.get()
+        d['postprocessing_clustering']['calculate_motl'] = self.calculateMotl.get()
+        d['postprocessing_clustering']['ignore_border_thickness'] = 0
+        d['postprocessing_clustering']['region_mask'] = 'no_mask'
+        d['postprocessing_clustering']['contact_mode'] = contact_mode
+        d['postprocessing_clustering']['contact_distance'] = self.contactDistance.get()
+
+        self.save_yaml(d, user_config_file)
 
         tsid = inputTom[tomId].getTsId()
 
@@ -282,8 +273,6 @@ class DeepictSegmentation(Protocol):
         tomoPath = self._getExtraPath(tsId)
         return tomoPath
 
-    def defineImportanVariables(self):
-        pass
 
     def getModel(self):
         tomoOpt = self.tomogramOption.get()
@@ -299,20 +288,16 @@ class DeepictSegmentation(Protocol):
 
         return modelWeights
 
+    def save_yaml(self, data, file_path):
+        with open(file_path, 'w') as yaml_file:
+            yaml.dump(data, yaml_file, default_flow_style=False)
+
 
     def createConfigFiles(self, inputTom, tomId):
-        def read_yaml(file_path):
-            with open(file_path, "r") as stream:
-                data = yaml.safe_load(stream)
-            return data
-
-        def save_yaml(data, file_path):
-            with open(file_path, 'w') as yaml_file:
-                yaml.dump(data, yaml_file, default_flow_style=False)
 
         model_path = os.path.join(Plugin.getHome(), self.getModel())
 
-        tomo_name = inputTom[tomId].getTsId()#inputTom[tomId].getFileName()
+        tomo_name = inputTom[tomId].getTsId()
         tomogram_path = os.path.join(self.getTsIdFolder(inputTom, tomId), self.FILTERED_TOMO_FN)
 
         mask_path = ''
@@ -323,15 +308,12 @@ class DeepictSegmentation(Protocol):
         user_data_file = os.path.join(self.getTsIdFolder(inputTom, tomId), 'data.csv')
         user_prediction_folder = self.getTsIdFolder(inputTom, tomId)
 
-        #TODO: user_work_folder should be tmp
         user_work_folder = self.getTsIdFolder(inputTom, tomId)
 
         os.makedirs(os.path.split(user_config_file)[0], exist_ok=True)
         os.makedirs(os.path.split(user_data_file)[0], exist_ok=True)
         os.makedirs(os.path.split(user_prediction_folder)[0], exist_ok=True)
         os.makedirs(os.path.split(user_work_folder)[0], exist_ok=True)
-
-        import yaml
 
         header = ['tomo_name', 'raw_tomo', 'filtered_tomo', 'no_mask']
 
@@ -347,10 +329,8 @@ class DeepictSegmentation(Protocol):
             # write the data
             writer.writerow(data)
 
-        data_dictionary = dict(zip(header, data))
-
         original_config_file = os.path.join(Plugin.getHome(), 'DeePiCt/3d_cnn/config.yaml')
-        d = read_yaml(original_config_file)
+        d = self.read_yaml(original_config_file)
         d['dataset_table'] = user_data_file
         d['output_dir'] = user_prediction_folder
         d['work_dir'] = user_work_folder
@@ -365,7 +345,54 @@ class DeepictSegmentation(Protocol):
         d['training']['processing_tomo'] = 'filtered_tomo'
         d['prediction']['processing_tomo'] = 'filtered_tomo'
         d['postprocessing_clustering']['region_mask'] = 'no_mask'
-        save_yaml(d, user_config_file)
+        self.save_yaml(d, user_config_file)
+
+    def getOutputSetOfTomograms(self, inputSet):
+
+        if self.Tomograms:
+            getattr(self, self.OUTPUT_TOMOGRAMS_NAME).enableAppend()
+        else:
+            outputSetOfTomograms = self._createSetOfTomograms()
+
+            if isinstance(inputSet, SetOfTomograms):
+                outputSetOfTomograms.copyInfo(inputSet)
+
+            outputSetOfTomograms.setStreamState(Set.STREAM_OPEN)
+
+            self._defineOutputs(**{self.OUTPUT_TOMOGRAMS_NAME: outputSetOfTomograms})
+            self._defineSourceRelation(inputSet, outputSetOfTomograms)
+
+        return self.Tomograms
+
+    def createOutputStep(self, tsObjId):
+        ts = self.inputTomogram.get()[tsObjId]
+        tsId = ts.getTsId()
+
+        typeOfModel = os.path.splitext(self.getModel())[0]
+        predfolder = os.path.join('predictions', typeOfModel, tsId, 'memb')
+        outputSeg = os.path.join(self._getExtraPath(tsId), predfolder)
+
+        output = self.getOutputSetOfTomograms(self.inputTomogram.get())
+
+        newTomogram = Tomogram()
+        newTomogram.setLocation(os.path.join(outputSeg,
+                                             'post_processed_prediction.mrc'))
+        newTomogram.setTsId(tsId)
+        newTomogram.setSamplingRate(ts.getSamplingRate())
+        # Set default tomogram origin
+        newTomogram.setOrigin(newOrigin=None)
+        newTomogram.setAcquisition(ts.getAcquisition())
+
+        output.append(newTomogram)
+        output.update(newTomogram)
+        output.write()
+        self._store()
+
+    def closeOutputSetsStep(self):
+        self.Tomograms.setStreamState(Set.STREAM_CLOSED)
+        self.Tomograms.write()
+        self._store()
+
 
     # --------------------------- INFO functions -----------------------------------
     def _summary(self):
@@ -373,16 +400,14 @@ class DeepictSegmentation(Protocol):
         summary = []
 
         if self.isFinished():
-            summary.append("This protocol has printed *%s* %i times." % (self.message, self.times))
+            summary.append("A set of %s tomograms have been segmented with deepict using a %s model" % (self.inputTomogram.get().getSize(), self.times))
         return summary
 
     def _methods(self):
         methods = []
 
-        if self.isFinished():
-            methods.append("%s has been printed in this run %i times." % (self.message, self.times))
-            if self.previousCount.hasPointer():
-                methods.append("Accumulated count from previous runs were %i."
-                               " In total, %s messages has been printed."
-                               % (self.previousCount, self.count))
+        if self.Tomograms:
+            methods.append("The segmentations has been computed for %d "
+                           "tomograms using the deepict segmenter.\n"
+                           % (self.inputTomogram.get().getSize()))
         return methods

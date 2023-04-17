@@ -39,7 +39,7 @@ class Plugin(pwem.Plugin):
 
     _homeVar = DEEPICT_HOME
     _pathVars = [DEEPICT_HOME]
-    #_url = 'https://github.com/scipion-em/scipion-em-deepict'
+    _url = 'https://github.com/scipion-em/scipion-em-deepict'
 
     @classmethod
     def _defineVariables(cls):
@@ -59,10 +59,6 @@ class Plugin(pwem.Plugin):
             # this is required for python virtual env to work
             del environ['PYTHONPATH']
 
-        #environ.update({'CUDA_VISIBLE_DEVICES': gpuId})
-
-        #cudaLib = environ.get(DEEPICT_CUDA_LIB, pwem.Config.CUDA_LIB)
-        #environ.addLibrary(cudaLib)
         return environ
 
     @classmethod
