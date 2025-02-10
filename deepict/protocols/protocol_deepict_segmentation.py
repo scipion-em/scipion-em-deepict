@@ -65,7 +65,7 @@ class DeepictSegmentation(EMProtocol, ProtTomoBase):
 
     OUTPUT_TOMOGRAMS_NAME = "Tomograms"
 
-    AMP_SPECTRUM_FN     = 'amp_spectrum.tsv'
+    AMP_SPECTRUM_FN     = 'spectrum_TS_001.tsv'
     FILTERED_TOMO_FN    = 'match_spectrum_filt.mrc'
 
     DEEPICT_TEMPORAL_PATH = '/home/kdna/opt/scipion/software/em/DeePiCt-0/DeePiCt/3d_cnn/src'
@@ -186,11 +186,9 @@ class DeepictSegmentation(EMProtocol, ProtTomoBase):
 
     def spectrumStep(self, inputTom, tomId):
         input_tomo = inputTom[tomId].getFileName()
-        target_spectrum = os.path.join(self.getTsIdFolder(inputTom, tomId), self.AMP_SPECTRUM_FN)
+        target_spectrum = os.path.join(Plugin.getHome(), self.AMP_SPECTRUM_FN)
         filtered_tomo = os.path.join(self.getTsIdFolder(inputTom, tomId), self.FILTERED_TOMO_FN)
 
-        Plugin.runDeepict(self, PYTHON, 'DeePiCt/spectrum_filter/extract_spectrum.py --input %s --output %s'
-                        % (input_tomo, target_spectrum))
 
         Plugin.runDeepict(self, PYTHON, 'DeePiCt/spectrum_filter/match_spectrum.py --input %s --target %s --output %s'
                           % (input_tomo, target_spectrum, filtered_tomo))
